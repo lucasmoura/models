@@ -4,6 +4,8 @@ namespace tensorflow {
 
 REGISTER_OP("GloveModel")
     .Output("vocab_words: string")
+    .Output("indices: int64")
+    .Output("values: int32")
     .SetIsStateful()
     .Attr("filename: string")
     .Attr("window_size: int = 5")
@@ -13,6 +15,10 @@ Parses a text file and creates the coocurrence matrix and batches
 of examples necessary to train a GloVe model.
 
 vocab_words: A vector of words in the corpus.
+indices: A vector of non zero indices that contain a coocurrence for
+the corpus.
+values: A vector of values for each index in indices, indicating the coocurrence
+value between two words.
 )doc");
 
 } // end namespace tensorflow

@@ -36,11 +36,15 @@ class GloveModelOp : public OpKernel {
   
   void Compute(OpKernelContext* ctx) override {
     ctx->set_output(0, vocab_words_);
+    ctx->set_output(1, indices_);
+    ctx->set_output(2, values_);
   }
 
   private:
    Tensor vocab_words_;
    Tensor freq_;
+   Tensor indices_;
+   Tensor values_;
    int64 corpus_size_;
    int32 window_size_;
    int32 vocab_size_;
@@ -123,49 +127,47 @@ class GloveModelOp : public OpKernel {
     int32 center_word, context_word, start_index, end_index, dist, index;
     int32 size = static_cast<int32>(corpus_.size());
 
+    typedef std::pair<int32, int32> CooccurIndices;
+    std::vector<CooccurIndices> valid_indices;
+
     for (int32 i = 0; i < size; ++i) {
       center_word = corpus_[i];
       start_index = (i - window_size_) > 0 ? (i - window_size_): 0;
       end_index = (i + window_size_) > size - 1 ? size - 1 : (i + window_size_);
-      std::cout<<end_index<<std::endl;
-      std::cout<<(i + window_size_)<<std::endl;
 
       for (int32 j = start_index; j <= end_index; j++) {
         if (j == i) {
           continue;
         }
-        std::cout<<corpus_[i]<<", "<<corpus_[j]<<std::endl;
         context_word = corpus_[j];
         index = static_cast<int32>(center_word * vocab_size_ + context_word);
         dist = (j - i) > 0? (j - i) : (j - i) * -1;
         int32 actual_value = coocurrences_[index];
+        
+        if (!actual_value) {
+          valid_indices.push_back(CooccurIndices(corpus_[i], corpus_[j]));
+        }
+
         coocurrences_[index] = actual_value + 1.0;
       }
 
     }
+    
+    int32 indices_size = static_cast<int32>(valid_indices.size());
+    Tensor indices(DT_INT64, TensorShape({indices_size, 2}));
+    Tensor values(DT_INT32, TensorShape({indices_size}));
 
-    std::cout<<"Printing coocurrence matrix"<<std::endl;
-    std::cout<<"Vocabulary size: "<<vocab_size_<<std::endl;
-    std::cout<<"Printing corpus: "<<std::endl;
+    for(std::size_t i = 0; i<valid_indices.size(); i++) {
+      center_word = valid_indices[i].first;
+      context_word = valid_indices[i].second;
 
-    for(std::size_t i = 0; i < corpus_.size(); i++)
-    {
-      if (i == corpus_.size() - 1)
-        std::cout<<corpus_[i]<<std::endl;
-      else
-        std::cout<<corpus_[i]<<", ";
+      indices.matrix<int64>()(i, 0) = center_word;
+      indices.matrix<int64>()(i, 1) = context_word;
+      values.flat<int32>()(i) = coocurrences_[center_word * vocab_size_ + context_word];
     }
 
-    for (int32 i = 0; i < vocab_size_; i++)
-    {
-      for (int32 j = 0; j < vocab_size_; j++)
-      {
-        std::cout<<coocurrences_[i * vocab_size_ + j]<<" ";
-      }
-
-      std::cout<<std::endl;
-    }
-
+    indices_ = indices;
+    values_ = values;
    }
 
    Status Init(Env *env, const string& filename) {
@@ -192,4 +194,4 @@ class GloveModelOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("GloveModel").Device(DEVICE_CPU), GloveModelOp);
 
-}  // end of namespace
+}  // end of namespace tensorflow
