@@ -1,4 +1,5 @@
 import tensorflow as tf
+import threading
 
 glove = tf.load_op_library('./glove_ops.so')
 
@@ -9,11 +10,14 @@ class GloveTest(tf.test.TestCase):
         filename = 'testfile'
         window_size = 5
         min_count = 0
-        batch_size = 6;
+        batch_size = 6
 
         with self.test_session():
-            vocab_word, indices, values, inputs, labels, ccounts, current_epoch = glove.glove_model(
-                filename, batch_size, window_size, min_count)
+            (vocab_word, indices, values, inputs, labels,
+             ccounts, current_epoch) = glove.glove_model(filename,
+                                                         batch_size,
+                                                         window_size,
+                                                         min_count)
             vocab_size = tf.shape(vocab_word)[0]
             indices_size = tf.shape(indices)[0]
             values_size = tf.shape(values)[0]
@@ -37,29 +41,44 @@ class GloveTest(tf.test.TestCase):
             for i, value in enumerate(values.eval()):
                 self.assertEqual(expected_values[i], value)
 
-
     def testBatchExamples(self):
         filename = 'testfile'
         window_size = 5
         min_count = 0
-        batch_size = 5;
+        batch_size = 5
+        concurrent_steps = 5
 
-        with self.test_session():
-            vocab_word, indices, values, inputs, labels, ccounts, current_epoch = glove.glove_model(
-                filename, batch_size, window_size, min_count)
+        (vocab_word, indices, values, inputs, labels,
+         ccounts, current_epoch) = glove.glove_model(filename,
+                                                     batch_size,
+                                                     window_size,
+                                                     min_count)
 
-            t_indices = indices.eval().tolist()
-            t_values = values.eval().tolist()
-            expected_epoch = 1;
+        sess = tf.Session()
+        t_indices = sess.run(indices).tolist()
+        t_values = sess.run(values).tolist()
+        expected_epoch = 1
 
-            for i in range(6):
-                for input_w, label, ccount in zip(inputs.eval(), labels.eval(), ccounts.eval()):
-                    pos = t_indices.index([input_w, label])
-                    self.assertEqual(t_values[pos], ccount)
+        def test_body():
+            inputs_, labels_, ccounts_, epoch = sess.run(
+                [inputs, labels, ccounts, current_epoch])
 
-                current_epoch.eval()
+            for word, label, ccount in zip(inputs_, labels_, ccounts_):
+                pos = t_indices.index([word, label])
+                self.assertEqual(t_values[pos], ccount)
 
-            self.assertEqual(current_epoch.eval(), expected_epoch)
+        workers = []
+
+        for _ in range(concurrent_steps):
+            t = threading.Thread(target=test_body)
+            t.start()
+            workers.append(t)
+
+        for t in workers:
+            t.join()
+
+        curr_epoch = sess.run(current_epoch)
+        self.assertEqual(expected_epoch, curr_epoch)
 
 
 if __name__ == '__main__':
