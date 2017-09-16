@@ -239,28 +239,29 @@ class GloveModelOp : public OpKernel {
         context_word = corpus_[j];
         index = static_cast<int32>(center_word * vocab_size_ + context_word);
         dist = (j - i) > 0? (j - i) : (j - i) * -1;
-        int32 actual_value = coocurrences_[index];
+        float actual_value = coocurrences_[index];
 
         if (!actual_value) {
           valid_indices.push_back(CooccurIndices(corpus_[i], corpus_[j]));
         }
 
-        coocurrences_[index] = actual_value + 1.0;
+        coocurrences_[index] = actual_value + (1.0 / dist);
       }
 
     }
 
     int32 indices_size = static_cast<int32>(valid_indices.size());
     Tensor indices(DT_INT64, TensorShape({indices_size, 2}));
-    Tensor values(DT_INT32, TensorShape({indices_size}));
+    Tensor values(DT_FLOAT, TensorShape({indices_size}));
 
     for(std::size_t i = 0; i<valid_indices.size(); i++) {
       center_word = valid_indices[i].first;
       context_word = valid_indices[i].second;
+      index = static_cast<int32>(center_word * vocab_size_ + context_word);
 
       indices.matrix<int64>()(i, 0) = center_word;
       indices.matrix<int64>()(i, 1) = context_word;
-      values.flat<int32>()(i) = coocurrences_[center_word * vocab_size_ + context_word];
+      values.flat<float>()(i) = coocurrences_[index];
     }
 
     indices_ = indices;

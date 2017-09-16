@@ -26,20 +26,21 @@ class GloveTest(tf.test.TestCase):
             self.assertEqual(indices_size.eval(), 21)
             self.assertEqual(values_size.eval(), 21)
 
-            expected_indices = [(4, 5), (4, 3), (4, 2), (4, 1), (5, 4), (5, 3),
-                                (5, 2), (5, 1), (3, 4), (3, 5), (3, 2), (3, 1),
-                                (2, 4), (2, 5), (2, 3), (2, 1), (1, 4), (1, 5),
-                                (1, 3), (1, 2), (1, 1)]
+            expected_indices = [(4, 5), (4, 3), (4, 2), (4, 1),
+                                (5, 4), (5, 3), (5, 2), (5, 1),
+                                (3, 4), (3, 5), (3, 2), (3, 1),
+                                (2, 4), (2, 5), (2, 3), (2, 1),
+                                (1, 4), (1, 5), (1, 3), (1, 2), (1, 1)]
 
-            for i, index in enumerate(indices.eval()):
-                self.assertEqual(expected_indices[i][0], index[0])
-                self.assertEqual(expected_indices[i][1], index[1])
+            self.assertAllClose(indices.eval(), expected_indices)
 
-            expected_values = [1, 1, 1, 2, 1, 1, 1, 2, 1, 1, 1, 2, 1, 1, 1, 2,
-                               2, 2, 2, 2, 2]
+            expected_values = [1.0, 0.5, 0.333333, 0.45,
+                               1.0, 1.0, 0.5, 0.583333,
+                               0.5, 1.0, 1.0, 0.833333,
+                               0.333333, 0.5, 1.0, 1.5,
+                               0.45, 0.583333, 0.833333, 1.5, 2.0]
 
-            for i, value in enumerate(values.eval()):
-                self.assertEqual(expected_values[i], value)
+            self.assertAllClose(values.eval(), expected_values)
 
     def testBatchExamples(self):
         filename = 'testfile'

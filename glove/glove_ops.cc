@@ -5,7 +5,7 @@ namespace tensorflow {
 REGISTER_OP("GloveModel")
     .Output("vocab_words: string")
     .Output("indices: int64")
-    .Output("values: int32")
+    .Output("values: float")
     .Output("examples: int32")
     .Output("labels: int32")
     .Output("ccount: float")
