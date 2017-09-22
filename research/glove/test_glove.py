@@ -13,11 +13,12 @@ class GloveTest(tf.test.TestCase):
         batch_size = 6
 
         with self.test_session():
-            (vocab_word, indices, values, inputs, labels,
-             ccounts, current_epoch) = glove.glove_model(filename,
-                                                         batch_size,
-                                                         window_size,
-                                                         min_count)
+            (vocab_word, indices, values, words_per_epoch,
+             current_epoch, num_processed_words, inputs,
+             labels, ccounts) = glove.glove_model(filename,
+                                                  batch_size,
+                                                  window_size,
+                                                  min_count)
             vocab_size = tf.shape(vocab_word)[0]
             indices_size = tf.shape(indices)[0]
             values_size = tf.shape(values)[0]
@@ -25,6 +26,7 @@ class GloveTest(tf.test.TestCase):
             self.assertEqual(vocab_size.eval(), 6)
             self.assertEqual(indices_size.eval(), 21)
             self.assertEqual(values_size.eval(), 21)
+            self.assertEqual(words_per_epoch.eval(), 6)
 
             expected_indices = [(4, 5), (4, 3), (4, 2), (4, 1),
                                 (5, 4), (5, 3), (5, 2), (5, 1),
@@ -49,11 +51,12 @@ class GloveTest(tf.test.TestCase):
         batch_size = 5
         concurrent_steps = 5
 
-        (vocab_word, indices, values, inputs, labels,
-         ccounts, current_epoch) = glove.glove_model(filename,
-                                                     batch_size,
-                                                     window_size,
-                                                     min_count)
+        (vocab_word, indices, values, words_per_epoch,
+         current_epoch, num_processed_words, inputs,
+         labels, ccounts) = glove.glove_model(filename,
+                                              batch_size,
+                                              window_size,
+                                              min_count)
 
         sess = tf.Session()
         t_indices = sess.run(indices).tolist()

@@ -50,44 +50,49 @@ class GloveModelOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
+    Tensor words_per_epoch(DT_INT64, TensorShape({}));
+    Tensor current_epoch(DT_INT32, TensorShape({}));
+    Tensor total_words_processed(DT_INT64, TensorShape({}));
+
     Tensor examples(DT_INT32, TensorShape({batch_size_}));
     auto Texamples = examples.flat<int32>();
     Tensor labels(DT_INT32, TensorShape({batch_size_}));
     auto Tlabels = labels.flat<int32>();
     Tensor ccounts(DT_FLOAT, TensorShape({batch_size_}));
     auto Tccounts = ccounts.flat<float>();
-    Tensor current_epoch(DT_INT32, TensorShape({}));
     {
-        mutex_lock l(mu_);
-        for (int i = 0; i < batch_size_; i++) {
-          Texamples(i) = precalc_examples_[precalc_index_].input;
-          Tlabels(i) = precalc_examples_[precalc_index_].label;
-          Tccounts(i) = precalc_examples_[precalc_index_].ccount;
+      mutex_lock l(mu_);
+      for (int i = 0; i < batch_size_; i++) {
+        Texamples(i) = precalc_examples_[precalc_index_].input;
+        Tlabels(i) = precalc_examples_[precalc_index_].label;
+        Tccounts(i) = precalc_examples_[precalc_index_].ccount;
 
-          //std::cout<<"Batch: "<<precalc_examples_[precalc_index_].input<<" "<<precalc_examples_[precalc_index_].label<<" "<<precalc_examples_[precalc_index_].ccount<<std::endl;
+        precalc_index_++;
 
-          precalc_index_++;
+        if (precalc_index_ >= num_precalc_examples) {
+          precalc_index_ = 0;
 
-          if (precalc_index_ >= num_precalc_examples) {
-            precalc_index_ = 0;
-
-            for (int j = 0; j < num_precalc_examples; j++) {
-                NextExample(&precalc_examples_[j].input,
-                            &precalc_examples_[j].label,
-                            &precalc_examples_[j].ccount);
-            }
+          for (int j = 0; j < num_precalc_examples; j++) {
+              NextExample(&precalc_examples_[j].input,
+                          &precalc_examples_[j].label,
+                          &precalc_examples_[j].ccount);
           }
-
         }
-        current_epoch.scalar<int32>()() = current_epoch_;
+
+      }
+      words_per_epoch.scalar<int64>()() = corpus_size_;
+      current_epoch.scalar<int32>()() = current_epoch_;
+      total_words_processed.scalar<int64>()() = total_words_processed_;
     }
     ctx->set_output(0, vocab_words_);
     ctx->set_output(1, indices_);
     ctx->set_output(2, values_);
-    ctx->set_output(3, examples);
-    ctx->set_output(4, labels);
-    ctx->set_output(5, ccounts);
-    ctx->set_output(6, current_epoch);
+    ctx->set_output(3, words_per_epoch);
+    ctx->set_output(4, current_epoch);
+    ctx->set_output(5, total_words_processed);
+    ctx->set_output(6, examples);
+    ctx->set_output(7, labels);
+    ctx->set_output(8, ccounts);
   }
 
   private:
@@ -107,14 +112,15 @@ class GloveModelOp : public OpKernel {
    int32 min_count_;
    int32 batch_size_;
    std::vector<int32> corpus_;
+   std::unordered_map<int32, float> coocurrences_;
+   std::vector<Example> precalc_examples_;
 
    mutex mu_;
-   int32 co_ocurrence_input_pos_ = 0 GUARDED_BY(mu_);
-   int32 co_ocurrence_output_pos_ = 0 GUARDED_BY(mu_);
+   int32 co_ocurrence_input_pos_ GUARDED_BY(mu_) = 0;
+   int32 co_ocurrence_output_pos_ GUARDED_BY(mu_) = 0;
    int32 current_epoch_ GUARDED_BY(mu_);
-   std::unordered_map<int32, float> coocurrences_ GUARDED_BY(mu_);
+   int64 total_words_processed_ GUARDED_BY(mu_) = 0;
    int precalc_index_ = 0 GUARDED_BY(mu_);
-   std::vector<Example> precalc_examples_ GUARDED_BY(mu_);
 
    typedef std::pair<string, int32> WordFreq;
 
@@ -144,6 +150,7 @@ class GloveModelOp : public OpKernel {
 
             co_ocurrence_input_pos_ = j + 1 == vocab_size_ ? i + 1: i;
             co_ocurrence_output_pos_ = j + 1;
+            ++total_words_processed_;
             return;
         }
       }
