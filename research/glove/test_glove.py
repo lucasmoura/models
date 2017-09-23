@@ -23,26 +23,45 @@ class GloveTest(tf.test.TestCase):
             indices_size = tf.shape(indices)[0]
             values_size = tf.shape(values)[0]
 
+            id2word = vocab_word.eval()
+            word2id = {}
+            for i, w in enumerate(id2word):
+                word2id[w] = i
+
+            words = [b'UNK', b'I', b'like', b'machine',
+                     b'learning', b'programming']
+
+            for word in words:
+                self.assertTrue(word in word2id)
+
             self.assertEqual(vocab_size.eval(), 6)
             self.assertEqual(indices_size.eval(), 21)
             self.assertEqual(values_size.eval(), 21)
             self.assertEqual(words_per_epoch.eval(), 6)
 
-            expected_indices = [(4, 5), (4, 3), (4, 2), (4, 1),
-                                (5, 4), (5, 3), (5, 2), (5, 1),
-                                (3, 4), (3, 5), (3, 2), (3, 1),
-                                (2, 4), (2, 5), (2, 3), (2, 1),
-                                (1, 4), (1, 5), (1, 3), (1, 2), (1, 1)]
+            I = word2id[b'I']
+            like = word2id[b'like']
+            machine = word2id[b'machine']
+            learning = word2id[b'learning']
+            programming = word2id[b'programming']
 
-            self.assertAllClose(indices.eval(), expected_indices)
+            expected_values = {
+                (I, like): 1.0, (I, machine): 0.5, (I, learning): 0.33333334,
+                (I, programming): 0.45, (like, I): 1.0, (like, machine): 1.0,
+                (like, learning): 0.5, (like, programming): 0.58333337,
+                (machine, I): 0.5, (machine, like): 1.0,
+                (machine, learning): 1.0, (machine, programming): 0.83333331,
+                (learning, I): 0.33333334, (learning, like): 0.5,
+                (learning, machine): 1.0, (learning, programming): 1.5,
+                (programming, I): 0.45, (programming, like): 0.58333337,
+                (programming, machine): 0.83333331,
+                (programming, learning): 1.5, (programming, programming): 2.0
+            }
 
-            expected_values = [1.0, 0.5, 0.333333, 0.45,
-                               1.0, 1.0, 0.5, 0.583333,
-                               0.5, 1.0, 1.0, 0.833333,
-                               0.333333, 0.5, 1.0, 1.5,
-                               0.45, 0.583333, 0.833333, 1.5, 2.0]
-
-            self.assertAllClose(values.eval(), expected_values)
+            self.assertEqual(len(expected_values), len(indices.eval()))
+            for index, value in zip(indices.eval(), values.eval()):
+                self.assertAlmostEqual(
+                    expected_values[tuple(index)], value)
 
     def testBatchExamples(self):
         filename = 'testfile'
