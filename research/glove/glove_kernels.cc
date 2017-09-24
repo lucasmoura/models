@@ -37,8 +37,7 @@ class GloveModelOp : public OpKernel {
      OP_REQUIRES_OK(ctx, Init(ctx->env(), filename));
 
      mutex_lock l(mu_);
-     co_ocurrence_input_pos_ = 0;
-     co_ocurrence_output_pos_ = 0;
+     example_pos_ = 0;
      precalc_index_ = 0;
      current_epoch_ = 0;
 
@@ -80,7 +79,7 @@ class GloveModelOp : public OpKernel {
         }
 
       }
-      words_per_epoch.scalar<int64>()() = corpus_size_;
+      words_per_epoch.scalar<int64>()() = words_per_epoch_;
       current_epoch.scalar<int32>()() = current_epoch_;
       total_words_processed.scalar<int64>()() = total_words_processed_;
     }
@@ -107,55 +106,47 @@ class GloveModelOp : public OpKernel {
    Tensor indices_;
    Tensor values_;
    int64 corpus_size_;
+   int64 words_per_epoch_;
+   int64 computed_ = 0;
    int32 window_size_;
    int32 vocab_size_;
    int32 min_count_;
    int32 batch_size_;
    std::vector<int32> corpus_;
-   std::unordered_map<int32, float> coocurrences_;
+   std::unordered_map<uint64, float> coocurrences_;
    std::vector<Example> precalc_examples_;
 
+   typedef std::pair<string, int32> WordFreq;
+   typedef std::pair<int32, int32> CooccurIndices;
+
    mutex mu_;
-   int32 co_ocurrence_input_pos_ GUARDED_BY(mu_) = 0;
-   int32 co_ocurrence_output_pos_ GUARDED_BY(mu_) = 0;
+   uint64 example_pos_ GUARDED_BY(mu_) = 0;
    int32 current_epoch_ GUARDED_BY(mu_);
    int64 total_words_processed_ GUARDED_BY(mu_) = 0;
    int precalc_index_ = 0 GUARDED_BY(mu_);
-
-   typedef std::pair<string, int32> WordFreq;
+   std::vector<CooccurIndices> valid_indices GUARDED_BY(mu_);
 
    void NextExample(int32* input, int32* label, float* ccount) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    int32 index;
+      uint64 size = static_cast<uint64>(valid_indices.size());
+      uint64 index;
+      uint64 center_word, context_word;
 
-    if (co_ocurrence_input_pos_ == vocab_size_ - 1) {
-        if(co_ocurrence_output_pos_ == vocab_size_ - 1) {
-          co_ocurrence_input_pos_ = 0;
-          co_ocurrence_output_pos_ = 0;
-          current_epoch_++;
-        }
-    }
+      while(example_pos_++ < size) {
+        center_word = valid_indices[example_pos_].first;
+        context_word = valid_indices[example_pos_].second;
+        index = static_cast<uint64>(center_word * vocab_size_ + context_word);
 
-    if (co_ocurrence_output_pos_ >= vocab_size_) {
-      co_ocurrence_output_pos_ = 0;
-    }
-
-    for (int32 i = co_ocurrence_input_pos_; i < vocab_size_; i++) {
-      for (int32 j = co_ocurrence_output_pos_; j < vocab_size_; j++) {
-        index = static_cast<int32>(i * vocab_size_ + j);
-
-        if (coocurrences_[index] != 0) {
-            *input = i;
-            *label = j;
-            *ccount = coocurrences_[index];
-
-            co_ocurrence_input_pos_ = j + 1 == vocab_size_ ? i + 1: i;
-            co_ocurrence_output_pos_ = j + 1;
-            ++total_words_processed_;
-            return;
-        }
+        *input = center_word;
+        *label = context_word;
+        *ccount = coocurrences_[index];
+        ++total_words_processed_;
+        computed_++;
+        return;
       }
-    }
 
+      example_pos_ = 0;
+      current_epoch_++;
+      computed_ = 0;
    }
 
    std::unordered_map<string, int32>
@@ -228,11 +219,9 @@ class GloveModelOp : public OpKernel {
    }
 
    void CreateCoocurrences() {
-    int32 center_word, context_word, start_index, end_index, dist, index;
-    int32 size = static_cast<int32>(corpus_.size());
-
-    typedef std::pair<int32, int32> CooccurIndices;
-    std::vector<CooccurIndices> valid_indices;
+    uint64 center_word, context_word, start_index, end_index, dist;
+    uint64 index = 0;
+    uint64 size = static_cast<uint64>(corpus_.size());
 
     for (int32 i = 0; i < size; ++i) {
       center_word = corpus_[i];
@@ -244,15 +233,17 @@ class GloveModelOp : public OpKernel {
           continue;
         }
         context_word = corpus_[j];
-        index = static_cast<int32>(center_word * vocab_size_ + context_word);
+        index = static_cast<uint64>(center_word * vocab_size_ + context_word);
         dist = (j - i) > 0? (j - i) : (j - i) * -1;
-        float actual_value = coocurrences_[index];
+        auto actual_value = coocurrences_.find(index);
 
-        if (!actual_value) {
+        if (actual_value == coocurrences_.end()) {
           valid_indices.push_back(CooccurIndices(corpus_[i], corpus_[j]));
+          coocurrences_[index] = 0;
         }
 
-        coocurrences_[index] = actual_value + (1.0 / dist);
+        coocurrences_[index] += (1.0 / dist);
+
       }
 
     }
@@ -264,7 +255,7 @@ class GloveModelOp : public OpKernel {
     for(std::size_t i = 0; i<valid_indices.size(); i++) {
       center_word = valid_indices[i].first;
       context_word = valid_indices[i].second;
-      index = static_cast<int32>(center_word * vocab_size_ + context_word);
+      index = static_cast<uint64>(center_word * vocab_size_ + context_word);
 
       indices.matrix<int64>()(i, 0) = center_word;
       indices.matrix<int64>()(i, 1) = context_word;
@@ -273,6 +264,7 @@ class GloveModelOp : public OpKernel {
 
     indices_ = indices;
     values_ = values;
+    words_per_epoch_ = indices_size;
    }
 
    Status Init(Env *env, const string& filename) {
