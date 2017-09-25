@@ -112,8 +112,6 @@ class GloveModelOp : public OpKernel {
    int32 min_count_;
    int32 batch_size_;
    std::vector<int32> corpus_;
-   std::unordered_map<uint64, float> coocurrences_;
-   std::vector<Example> precalc_examples_;
 
    typedef std::pair<string, int32> WordFreq;
    typedef std::pair<int32, int32> CooccurIndices;
@@ -124,6 +122,8 @@ class GloveModelOp : public OpKernel {
    int64 total_words_processed_ GUARDED_BY(mu_) = 0;
    int precalc_index_ = 0 GUARDED_BY(mu_);
    std::vector<CooccurIndices> valid_indices GUARDED_BY(mu_);
+   std::unordered_map<uint64, float> coocurrences_ GUARDED_BY(mu_);
+   std::vector<Example> precalc_examples_ GUARDED_BY(mu_);
 
    void NextExample(int32* input, int32* label, float* ccount) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       uint64 size = static_cast<uint64>(valid_indices.size());
@@ -135,7 +135,7 @@ class GloveModelOp : public OpKernel {
         current_epoch_++;
       }
 
-      while(example_pos_++ < size) {
+      while(example_pos_ < size) {
         center_word = valid_indices[example_pos_].first;
         context_word = valid_indices[example_pos_].second;
         index = static_cast<uint64>(center_word * vocab_size_ + context_word);
@@ -144,6 +144,7 @@ class GloveModelOp : public OpKernel {
         *label = context_word;
         *ccount = coocurrences_[index];
         ++total_words_processed_;
+        example_pos_++;
         return;
       }
 
