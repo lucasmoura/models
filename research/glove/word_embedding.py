@@ -137,9 +137,6 @@ class WordEmbedding(object):
     self.build_eval_graph()
     self.save_vocab()
 
-    # Word Embeddings matrix
-    self._embeddings = None
-
   def read_analogies(self):
     """Reads through the analogy question file.
 
@@ -168,9 +165,6 @@ class WordEmbedding(object):
   def build_eval_graph(self):
     """Build the eval graph."""
     # Eval graph
-
-    # Define the word embeddings
-    self.set_embeddings()
 
     # Each analogy task is to predict the 4th word (d) given three
     # words: a, b, c.  E.g., a=italy, b=rome, c=france, we should
@@ -233,6 +227,7 @@ class WordEmbedding(object):
     initial_epoch, = self._session.run([self._epoch])
     while True:
       _, epoch = self._session.run([self._train, self._epoch])
+
       if epoch != initial_epoch:
         break
 
@@ -255,9 +250,8 @@ class WordEmbedding(object):
     last_checkpoint_time = 0
     while True:
       time.sleep(opts.statistics_interval)  # Reports our progress once a while.
-      (epoch, step, loss, words) = self._session.run(
-          [self._epoch, self.global_step, self._loss, self._words])
-      lr = self._lr
+      (epoch, step, loss, words, lr) = self._session.run(
+          [self._epoch, self.global_step, self._loss, self._words, self._lr])
       now = time.time()
       last_words, last_time, rate = words, now, (words - last_words) / (
           now - last_time)
@@ -354,9 +348,6 @@ class WordEmbedding(object):
 
   def build_graph(self):
     """Build the graph for the full model."""
-    raise NotImplementedError
-
-  def set_embeddings(self):
     raise NotImplementedError
 
 

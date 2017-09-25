@@ -37,7 +37,7 @@ class GloveTest(tf.test.TestCase):
             self.assertEqual(vocab_size.eval(), 6)
             self.assertEqual(indices_size.eval(), 21)
             self.assertEqual(values_size.eval(), 21)
-            self.assertEqual(words_per_epoch.eval(), 6)
+            self.assertEqual(words_per_epoch.eval(), len(indices.eval()))
 
             I = word2id[b'I']
             like = word2id[b'like']
@@ -68,7 +68,7 @@ class GloveTest(tf.test.TestCase):
         window_size = 5
         min_count = 0
         batch_size = 5
-        concurrent_steps = 5
+        concurrent_steps = 1
 
         (vocab_word, indices, values, words_per_epoch,
          current_epoch, num_processed_words, inputs,

@@ -11,18 +11,16 @@ glove = tf.load_op_library(
 
 
 class GloVe(WordEmbedding):
-
     def forward(self, inputs, labels, **kwargs):
         opts = self._options
         init_width = 1.0
 
-        self.input_embeddings = tf.Variable(
-            tf.random_uniform(
+        input_embeddings = tf.Variable( tf.random_uniform(
                 [opts.vocab_size, opts.emb_dim], -init_width, init_width),
             name="input_embeddings")
 
         # Transposed context embeddings
-        self.context_embeddings = tf.Variable(
+        context_embeddings = tf.Variable(
             tf.random_uniform(
                 [opts.vocab_size, opts.emb_dim], -init_width, init_width),
             name="context_embeddings")
@@ -35,16 +33,19 @@ class GloVe(WordEmbedding):
             tf.random_uniform([opts.vocab_size], -init_width, init_width),
             name="context_biases")
 
+        self._embeddings = tf.add(input_embeddings,
+                                  context_embeddings)
+
         # Embeddings for examples: [batch_size, emb_dim]
-        input_embedings = tf.nn.embedding_lookup(
-            self.input_embeddings, inputs)
+        inputs_embeddings = tf.nn.embedding_lookup(
+            input_embeddings, inputs)
 
         # Embeddings for labels: [batch_size, vocab_size]
         labels_embeddings = tf.nn.embedding_lookup(
-            self.context_embeddings, labels)
+            context_embeddings, labels)
 
         # biases for examples: [batch_size]
-        input_biases = tf.nn.embedding_lookup(
+        inputs_biases = tf.nn.embedding_lookup(
             input_biases, inputs)
 
         # biases for labels: [batch_size]
@@ -53,7 +54,7 @@ class GloVe(WordEmbedding):
 
         self.global_step = tf.Variable(0, name="global_step")
 
-        return (input_embedings, input_biases,
+        return (inputs_embeddings, inputs_biases,
                 labels_embeddings, labels_biases)
 
     def loss(self, **kwargs):
@@ -62,11 +63,12 @@ class GloVe(WordEmbedding):
         inputs_biases = kwargs['inputs_biases']
         labels_embeddings = kwargs['labels_embeddings']
         labels_biases = kwargs['labels_biases']
-        alpha_value = 0.75
-        x_max = 100
+
+        alpha_value = tf.constant(0.75)
+        x_max = tf.constant(100.0)
 
         # Co-ocurrences log
-        log_coocurrences = tf.log(tf.to_float(ccounts))
+        log_coocurrences = tf.log(ccounts)
 
         embedding_product = tf.reduce_sum(
             tf.multiply(inputs_embeddings, labels_embeddings), 1)
@@ -75,7 +77,7 @@ class GloVe(WordEmbedding):
                 tf.add_n([embedding_product,
                           inputs_biases,
                           labels_biases,
-                          -log_coocurrences]))
+                          tf.negative(log_coocurrences)]))
 
         weighting_factor = tf.minimum(
             1.0,
@@ -91,7 +93,7 @@ class GloVe(WordEmbedding):
         lr = opts.learning_rate
 
         optimizer = tf.train.AdagradOptimizer(lr)
-        self._lr = lr
+        self._lr = tf.constant(lr)
         train = optimizer.minimize(loss,
                                    global_step=self.global_step,
                                    gate_gradients=optimizer.GATE_NONE)
@@ -120,6 +122,10 @@ class GloVe(WordEmbedding):
         self._ccounts = ccounts
         self._id2word = opts.vocab_words
 
+        test_examples = tf.Print(examples, [examples], message="This is examples: ")
+        test_labels = tf.Print(labels, [labels], message="This is labels: ")
+        test_ccounts = tf.Print(ccounts, [ccounts], message="This is ccounts: ")
+
         for i, w in enumerate(self._id2word):
             self._word2id[w] = i
 
@@ -140,9 +146,6 @@ class GloVe(WordEmbedding):
         tf.global_variables_initializer().run()
         self.saver = tf.train.Saver()
 
-    def set_embeddings(self):
-        self._embeddings = tf.add(self.input_embeddings,
-                                  self.context_embeddings)
 
 
 def main():

@@ -131,6 +131,12 @@ class GloveModelOp : public OpKernel {
       uint64 index;
       uint64 center_word, context_word;
 
+      if(example_pos_ >= size) {
+        example_pos_ = 0;
+        current_epoch_++;
+        computed_ = 0;
+      }
+
       while(example_pos_++ < size) {
         center_word = valid_indices[example_pos_].first;
         context_word = valid_indices[example_pos_].second;
@@ -144,9 +150,6 @@ class GloveModelOp : public OpKernel {
         return;
       }
 
-      example_pos_ = 0;
-      current_epoch_++;
-      computed_ = 0;
    }
 
    std::unordered_map<string, int32>
