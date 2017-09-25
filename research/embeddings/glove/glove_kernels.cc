@@ -7,6 +7,7 @@
 namespace tensorflow {
 
 const int num_precalc_examples = 10000;
+const int DEBUG = 1;
 
 namespace {
 
@@ -117,18 +118,18 @@ class GloveModelOp : public OpKernel {
    typedef std::pair<int32, int32> CooccurIndices;
 
    mutex mu_;
-   uint64 example_pos_ GUARDED_BY(mu_) = 0;
+   uint64 example_pos_ GUARDED_BY(mu_);
    int32 current_epoch_ GUARDED_BY(mu_);
-   int64 total_words_processed_ GUARDED_BY(mu_) = 0;
-   int precalc_index_ = 0 GUARDED_BY(mu_);
+   int64 total_words_processed_ GUARDED_BY(mu_);
+   int precalc_index_ GUARDED_BY(mu_);
    std::vector<CooccurIndices> valid_indices GUARDED_BY(mu_);
-   std::unordered_map<uint64, float> coocurrences_ GUARDED_BY(mu_);
+   std::vector<float> valid_values GUARDED_BY(mu_);
    std::vector<Example> precalc_examples_ GUARDED_BY(mu_);
 
    void NextExample(int32* input, int32* label, float* ccount) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       uint64 size = static_cast<uint64>(valid_indices.size());
-      uint64 index;
-      uint64 center_word, context_word;
+      int32 center_word, context_word;
+      float value;
 
       if(example_pos_ >= size) {
         example_pos_ = 0;
@@ -138,11 +139,11 @@ class GloveModelOp : public OpKernel {
       while(example_pos_ < size) {
         center_word = valid_indices[example_pos_].first;
         context_word = valid_indices[example_pos_].second;
-        index = static_cast<uint64>(center_word * vocab_size_ + context_word);
+        value = valid_values[example_pos_];
 
         *input = center_word;
         *label = context_word;
-        *ccount = coocurrences_[index];
+        *ccount = value;
         ++total_words_processed_;
         example_pos_++;
         return;
@@ -220,6 +221,7 @@ class GloveModelOp : public OpKernel {
    }
 
    void CreateCoocurrences() {
+    std::unordered_map<uint64, float> coocurrences_;
     uint64 center_word, context_word, start_index, end_index, dist;
     uint64 index = 0;
     uint64 size = static_cast<uint64>(corpus_.size());
@@ -261,6 +263,7 @@ class GloveModelOp : public OpKernel {
       indices.matrix<int64>()(i, 0) = center_word;
       indices.matrix<int64>()(i, 1) = context_word;
       values.flat<float>()(i) = coocurrences_[index];
+      valid_values.push_back(coocurrences_[index]);
     }
 
     indices_ = indices;
@@ -273,11 +276,13 @@ class GloveModelOp : public OpKernel {
     TF_RETURN_IF_ERROR(ReadFileToString(env, filename, &data));
     auto word_freq = CreateWordFrequencies(data);
 
-   // if (corpus_size_ < window_size_ * 10) {
-   //   return errors::InvalidArgument("The text file ", filename,
-   //                                  " contains too little data: ",
-   //                                  corpus_size_, "words");
-   // }
+    if (!DEBUG) {
+        if (corpus_size_ < window_size_ * 10) {
+        return errors::InvalidArgument("The text file ", filename,
+                                        " contains too little data: ",
+                                        corpus_size_, "words");
+        }
+    }
 
     auto ordered = CreateVocabulary(word_freq);
     word_freq.clear();
