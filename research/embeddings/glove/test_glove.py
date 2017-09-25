@@ -7,7 +7,7 @@ glove = tf.load_op_library('./glove_ops.so')
 class GloveTest(tf.test.TestCase):
 
     def testCoocurrenceMatrix(self):
-        filename = 'testfile'
+        filename = 'test_data/testfile'
         window_size = 5
         min_count = 0
         batch_size = 6
@@ -23,16 +23,6 @@ class GloveTest(tf.test.TestCase):
             indices_size = tf.shape(indices)[0]
             values_size = tf.shape(values)[0]
 
-            id2word = vocab_word.eval()
-            word2id = {}
-            for i, w in enumerate(id2word):
-                word2id[w] = i
-
-            words = [b'UNK', b'I', b'like', b'machine',
-                     b'learning', b'programming']
-
-            for word in words:
-                self.assertTrue(word in word2id)
 
             self.assertEqual(vocab_size.eval(), 6)
             self.assertEqual(indices_size.eval(), 21)
@@ -64,7 +54,7 @@ class GloveTest(tf.test.TestCase):
                     expected_values[tuple(index)], value)
 
     def testBatchExamples(self):
-        filename = 'testfile'
+        filename = 'test_data/testfile'
         window_size = 5
         min_count = 0
         batch_size = 5

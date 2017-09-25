@@ -1,13 +1,31 @@
 import os
 import sys
 
-import tensorflow as tf
-from word_embedding import WordEmbedding, FLAGS, Options
+# Allow for base embeddings to be imported
+sys.path.insert(0, '../')
 
-from six.moves import xrange  # pylint: disable=redefined-builtin
+import tensorflow as tf
+from base_embedding.word_embedding import WordEmbedding, flags, run_model, Options
 
 glove = tf.load_op_library(
     os.path.join(os.path.dirname(os.path.realpath(__file__)), 'glove_ops.so'))
+
+flags.DEFINE_float("alpha", 0.75, "Exponent term for weighting function")
+flags.DEFINE_float("coocurrence_max", 100,
+                   "Regularization term for weighting function.")
+
+user_flags = flags.FLAGS
+
+
+class GloVeOptions(Options):
+    def __init__(self, user_flags):
+        # Regularization term for weighting function
+        self.coocurrence_max = user_flags.coocurrence_max
+
+        # Exponent term for weighting function
+        self.alpha = user_flags.alpha
+
+        super().__init__(user_flags)
 
 
 class GloVe(WordEmbedding):
@@ -15,7 +33,7 @@ class GloVe(WordEmbedding):
         opts = self._options
         init_width = 1.0
 
-        input_embeddings = tf.Variable( tf.random_uniform(
+        input_embeddings = tf.Variable(tf.random_uniform(
                 [opts.vocab_size, opts.emb_dim], -init_width, init_width),
             name="input_embeddings")
 
@@ -58,14 +76,15 @@ class GloVe(WordEmbedding):
                 labels_embeddings, labels_biases)
 
     def loss(self, **kwargs):
+        opts = self._options
         ccounts = kwargs['ccounts']
         inputs_embeddings = kwargs['inputs_embeddings']
         inputs_biases = kwargs['inputs_biases']
         labels_embeddings = kwargs['labels_embeddings']
         labels_biases = kwargs['labels_biases']
 
-        alpha_value = tf.constant(0.75)
-        x_max = tf.constant(100.0)
+        alpha_value = tf.constant(opts.alpha, dtype=tf.float32)
+        x_max = tf.constant(opts.coocurrence_max, dtype=tf.float32)
 
         # Co-ocurrences log
         log_coocurrences = tf.log(ccounts)
@@ -122,10 +141,6 @@ class GloVe(WordEmbedding):
         self._ccounts = ccounts
         self._id2word = opts.vocab_words
 
-        test_examples = tf.Print(examples, [examples], message="This is examples: ")
-        test_labels = tf.Print(labels, [labels], message="This is labels: ")
-        test_ccounts = tf.Print(ccounts, [ccounts], message="This is ccounts: ")
-
         for i, w in enumerate(self._id2word):
             self._word2id[w] = i
 
@@ -147,25 +162,14 @@ class GloVe(WordEmbedding):
         self.saver = tf.train.Saver()
 
 
-
-def main():
+def main(_):
     """Train a GloVe model."""
-    if not FLAGS.train_data or not FLAGS.eval_data or not FLAGS.save_path:
+    if not user_flags.train_data or not user_flags.eval_data or not user_flags.save_path:
         print("--train_data --eval_data and --save_path must be specified.")
         sys.exit(1)
-    opts = Options()
-    with tf.Graph().as_default(), tf.Session() as session:
-        with tf.device("/cpu:0"):
-            model = GloVe(opts, session)
-            model.read_analogies()  # Read analogy questions
-        for _ in xrange(opts.epochs_to_train):
-            model.train()  # Process one epoch
-            model.eval()  # Eval analogies.
-            # Perform a final save.
-        model.saver.save(session,
-                         os.path.join(opts.save_path, "model.ckpt"),
-                         global_step=model.global_step)
+
+    run_model(GloVe, GloVeOptions, user_flags)
 
 
 if __name__ == '__main__':
-    main()
+    tf.app.run()

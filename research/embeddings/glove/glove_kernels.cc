@@ -6,7 +6,7 @@
 
 namespace tensorflow {
 
-const int num_precalc_examples = 6;
+const int num_precalc_examples = 10000;
 
 namespace {
 
@@ -107,7 +107,6 @@ class GloveModelOp : public OpKernel {
    Tensor values_;
    int64 corpus_size_;
    int64 words_per_epoch_;
-   int64 computed_ = 0;
    int32 window_size_;
    int32 vocab_size_;
    int32 min_count_;
@@ -134,7 +133,6 @@ class GloveModelOp : public OpKernel {
       if(example_pos_ >= size) {
         example_pos_ = 0;
         current_epoch_++;
-        computed_ = 0;
       }
 
       while(example_pos_++ < size) {
@@ -146,7 +144,6 @@ class GloveModelOp : public OpKernel {
         *label = context_word;
         *ccount = coocurrences_[index];
         ++total_words_processed_;
-        computed_++;
         return;
       }
 
