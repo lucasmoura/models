@@ -127,8 +127,9 @@ class Options(object):
 class WordEmbedding(object):
     """
     This class provides a base class for Word Embedding models. It has methods
-    to read question words to evaluate the model, a eval graph to run the
-    evaluations for the model and a train method.
+    to read question words to evaluate the model, an evaluation graph to run the
+    evaluations for the model and a train method, used to concurrently train the
+    model.
 
     This class is based on the implementation of the SkipGram Word2Vec model
     found on tutorials/embeddings/word2vec.py.
